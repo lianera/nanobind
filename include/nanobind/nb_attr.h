@@ -61,6 +61,12 @@ template <typename T> struct intrusive_ptr {
         : set_self_py(set_self_py) { }
     void (*set_self_py)(T *, PyObject *) noexcept;
 };
+template <typename T> struct weak_py
+{
+    weak_py(void (*set_weak_py)(T*, PyObject*)noexcept)
+        : set_weak_py(set_weak_py){}
+    void (*set_weak_py)(T*, PyObject*)noexcept;
+};
 
 struct type_slots {
     type_slots (const PyType_Slot *value) : value(value) { }

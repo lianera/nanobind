@@ -687,6 +687,9 @@ static PyObject *nb_func_vectorcall_complex(PyObject *self,
                     if (NB_UNLIKELY(self_arg_nb->intrusive))
                         nb_type_data(Py_TYPE(self_arg))
                             ->set_self_py(inst_ptr(self_arg_nb), self_arg);
+                    if(NB_UNLIKELY(self_arg_nb->weak_py))
+                        nb_type_data(Py_TYPE(self_arg))
+                            ->set_weak_py(weak_py_ptr(self_arg_nb), self_arg);
                 }
 
                 goto done;
@@ -788,6 +791,9 @@ static PyObject *nb_func_vectorcall_simple(PyObject *self,
                     if (NB_UNLIKELY(self_arg_nb->intrusive))
                         nb_type_data(Py_TYPE(self_arg))
                             ->set_self_py(inst_ptr(self_arg_nb), self_arg);
+                    if(NB_UNLIKELY(self_arg_nb->weak_py))
+                        nb_type_data(Py_TYPE(self_arg))
+                            ->set_weak_py(weak_py_ptr(self_arg_nb), self_arg);
                 }
 
                 goto done;

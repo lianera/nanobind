@@ -72,7 +72,10 @@ struct nb_inst { // usually: 24 bytes
     /// Does this instance use intrusive reference counting?
     uint32_t intrusive : 1;
 
-    uint32_t unused: 25;
+    uint32_t weak_py : 1;
+    uint32_t destroyed : 1;
+
+    uint32_t unused: 23;
 };
 
 static_assert(sizeof(nb_inst) == sizeof(PyObject) + sizeof(uint32_t) * 2);
@@ -298,6 +301,11 @@ NB_INLINE type_data *nb_type_data(PyTypeObject *o) noexcept{
 extern PyObject *nb_type_name(PyObject *o) noexcept;
 
 inline void *inst_ptr(nb_inst *self) {
+    void *ptr = (void *) ((intptr_t) self + self->offset);
+    return self->direct ? ptr : *(void **) ptr;
+}
+
+inline void *weak_py_ptr(nb_inst *self) {
     void *ptr = (void *) ((intptr_t) self + self->offset);
     return self->direct ? ptr : *(void **) ptr;
 }

@@ -367,6 +367,8 @@ NB_CORE void nb_inst_set_state(PyObject *o, bool ready, bool destruct) noexcept;
 /// Query the 'ready' and 'destruct' flags of an instance
 NB_CORE std::pair<bool, bool> nb_inst_state(PyObject *o) noexcept;
 
+NB_CORE void nb_inst_set_destroyed(PyObject *o)noexcept;
+
 // ========================================================================
 
 // Create and install a Python property object

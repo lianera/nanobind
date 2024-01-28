@@ -61,6 +61,7 @@ PyObject *inst_new_int(PyTypeObject *tp) {
         const type_data *t = nb_type_data(tp);
         uint32_t align = (uint32_t) t->align;
         bool intrusive = t->flags & (uint32_t) type_flags::intrusive_ptr;
+        bool weak_py = t->flags & (uint32_t) type_flags::weak_py;
 
         uintptr_t payload = (uintptr_t) (self + 1);
 
@@ -75,6 +76,8 @@ PyObject *inst_new_int(PyTypeObject *tp) {
         self->cpp_delete = 0;
         self->clear_keep_alive = 0;
         self->intrusive = intrusive;
+        self->weak_py = weak_py;
+        self->destroyed = 0;
         self->unused = 0;
 
         // Update hash table that maps from C++ to Python instance
@@ -127,6 +130,7 @@ PyObject *inst_new_ext(PyTypeObject *tp, void *value) {
 
     const type_data *t = nb_type_data(tp);
     bool intrusive = t->flags & (uint32_t) type_flags::intrusive_ptr;
+    bool weak_py = t->flags & (uint32_t) type_flags::weak_py;
 
     self->offset = offset;
     self->direct = direct;
@@ -136,6 +140,8 @@ PyObject *inst_new_ext(PyTypeObject *tp, void *value) {
     self->cpp_delete = 0;
     self->clear_keep_alive = 0;
     self->intrusive = intrusive;
+    self->weak_py = weak_py;
+    self->destroyed = 0;
     self->unused = 0;
 
     // Update hash table that maps from C++ to Python instance
@@ -772,7 +778,8 @@ PyObject *nb_type_new(const type_init_data *t) noexcept {
          has_supplement    = t->flags & (uint32_t) type_init_flags::has_supplement,
          has_dynamic_attr  = t->flags & (uint32_t) type_flags::has_dynamic_attr,
          intrusive_ptr     = t->flags & (uint32_t) type_flags::intrusive_ptr,
-         has_shared_from_this = t->flags & (uint32_t) type_flags::has_shared_from_this;
+         has_shared_from_this = t->flags & (uint32_t) type_flags::has_shared_from_this,
+         weak_py = t->flags & (uint32_t) type_flags::weak_py;
 
     str name(t->name), qualname = name;
     object modname;
@@ -845,6 +852,8 @@ PyObject *nb_type_new(const type_init_data *t) noexcept {
 
     bool base_intrusive_ptr =
         tb && (tb->flags & (uint32_t) type_flags::intrusive_ptr);
+    bool base_weak_py =
+        tb && (tb->flags & (uint32_t) type_flags::weak_py);
 
     char *name_copy = strdup_check(name.c_str());
 
@@ -940,6 +949,11 @@ PyObject *nb_type_new(const type_init_data *t) noexcept {
     if (!intrusive_ptr && base_intrusive_ptr) {
         to->flags |= (uint32_t) type_flags::intrusive_ptr;
         to->set_self_py = tb->set_self_py;
+    }
+
+    if (!weak_py && base_weak_py) {
+        to->flags |= (uint32_t) type_flags::weak_py;
+        to->set_weak_py = tb->set_weak_py;
     }
 
     if (!has_shared_from_this && tb &&
@@ -1101,6 +1115,14 @@ bool nb_type_get(const std::type_info *cpp_type, PyObject *src, uint8_t flags,
                 return false;
             }
 
+            if (NB_UNLIKELY(inst->weak_py && inst->destroyed)) {
+                PyErr_WarnFormat(
+                    PyExc_RuntimeWarning, 1, "nanobind: %s of type '%s'!\n",
+                        "attempted to access an destroyed instance",
+                    t->name);
+                return false;
+            }
+
             *out = inst_ptr(inst);
 
             return true;
@@ -1218,6 +1240,9 @@ static PyObject *nb_type_put_common(void *value, type_data *t, rv_policy rvp,
     const bool intrusive = t->flags & (uint32_t) type_flags::intrusive_ptr;
     if (intrusive)
         rvp = rv_policy::take_ownership;
+    const bool weak_py = t->flags & (uint32_t) type_flags::weak_py;
+    if(weak_py)
+        rvp = rv_policy::reference;
 
     const bool create_new = rvp == rv_policy::copy || rvp == rv_policy::move;
 
@@ -1292,6 +1317,8 @@ static PyObject *nb_type_put_common(void *value, type_data *t, rv_policy rvp,
 
     if (intrusive)
         t->set_self_py(new_value, (PyObject *) inst);
+    if(weak_py)
+        t->set_weak_py(new_value, (PyObject *)inst);
 
     return (PyObject *) inst;
 }
@@ -1644,6 +1671,12 @@ void nb_inst_set_state(PyObject *o, bool ready, bool destruct) noexcept {
 std::pair<bool, bool> nb_inst_state(PyObject *o) noexcept {
     nb_inst *nbi = (nb_inst *) o;
     return { (bool) nbi->ready, (bool) nbi->destruct };
+}
+
+void nb_inst_set_destroyed(PyObject *o)noexcept
+{
+    nb_inst *nbi = (nb_inst *)o;
+    nbi->destroyed = true;
 }
 
 void nb_inst_destruct(PyObject *o) noexcept {

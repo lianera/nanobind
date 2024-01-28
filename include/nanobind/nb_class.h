@@ -49,7 +49,8 @@ enum class type_flags : uint32_t {
     /// If so, type_data::keep_shared_from_this_alive is also set.
     has_shared_from_this     = (1 << 12),
 
-    // Six more flag bits available (13 through 18) without needing
+    weak_py                  = (1 << 13)
+    // Five more flag bits available (14 through 18) without needing
     // a larger reorganization
 };
 
@@ -96,6 +97,7 @@ struct type_data {
     bool (**implicit_py)(PyTypeObject *, PyObject *, cleanup_list *) noexcept;
     void (*set_self_py)(void *, PyObject *) noexcept;
     bool (*keep_shared_from_this_alive)(PyObject *) noexcept;
+    void (*set_weak_py)(void *, PyObject *) noexcept;
 #if defined(Py_LIMITED_API)
     size_t dictoffset;
 #endif
@@ -144,6 +146,12 @@ NB_INLINE void type_extra_apply(type_init_data &t, intrusive_ptr<T> ip) {
     t.set_self_py = (void (*)(void *, PyObject *) noexcept) ip.set_self_py;
 }
 
+template <typename T>
+NB_INLINE void type_extra_apply(type_init_data &t, weak_py<T> wp){
+    t.flags |= (uint32_t) type_flags::weak_py;
+    t.set_weak_py = (void (*)(void *, PyObject *) noexcept) wp.set_weak_py;
+}
+
 NB_INLINE void type_extra_apply(type_init_data &t, is_final) {
     t.flags |= (uint32_t) type_flags::is_final;
 }
@@ -186,6 +194,9 @@ NB_INLINE void type_extra_apply(enum_init_data &ed, is_arithmetic) {
 void type_extra_apply(enum_init_data &, const handle &) = delete;
 template <typename T>
 void type_extra_apply(enum_init_data &, intrusive_ptr<T>) = delete;
+template <typename T>
+void type_extra_apply(enum_init_data &, weak_py<T>) = delete;
+
 template <typename T>
 void type_extra_apply(enum_init_data &, supplement<T>) = delete;
 void type_extra_apply(enum_init_data &, is_final) = delete;
@@ -267,6 +278,10 @@ inline object inst_reference(handle h, void *p, handle parent = handle()) {
 inline void inst_zero(handle h) { detail::nb_inst_zero(h.ptr()); }
 inline void inst_set_state(handle h, bool ready, bool destruct) {
     detail::nb_inst_set_state(h.ptr(), ready, destruct);
+}
+inline void inst_set_destroyed(handle h)
+{
+    detail::nb_inst_set_destroyed(h.ptr());
 }
 inline std::pair<bool, bool> inst_state(handle h) {
     return detail::nb_inst_state(h.ptr());
